@@ -2,6 +2,8 @@ import * as Either from 'fp-ts/lib/Either'
 import { pipe } from 'fp-ts/lib/pipeable'
 import * as O from 'optics-ts'
 import * as t from 'io-ts'
+import express = require('express')
+import cors = require('cors')
 import WebSocket = require('ws')
 
 interface Game {
@@ -321,13 +323,17 @@ const handleConnectionClose = (ws: WebSocket): void => {
 let port: number = parseInt(process.env.PORT || '', 10)
 if (isNaN(port)) port = 3000
 
-const server = new WebSocket.Server({ port })
+const app = express()
+app.use(cors())
+app.use((_req, res) => res.send(''))
 
-server.on('listening', () => {
+const server = app.listen(port, () => {
   console.log(`Listening on port ${port}`)
 })
 
-server.on('connection', ws => {
+const wsServer = new WebSocket.Server({ server })
+
+wsServer.on('connection', ws => {
   ws.on('message', data => {
     const request = parseRequest(data)
     if (request === undefined) {
