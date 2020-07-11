@@ -68,14 +68,25 @@ const removeClient = (
         }
   )
 
+const randomId = () => Math.random().toString(36).substring(2, 6).toUpperCase()
+
 const createGame = (
-  id: string,
+  gameId: string | undefined,
   host: WebSocket,
   games: Game[]
 ): Either.Either<string, { game: Game; games: Game[] }> => {
-  const existing = getGameById(id, games)
-  if (existing) return Either.left('Game with this id already exists')
-  const game = { id: id, host, clients: [] }
+  let id: string
+  if (!gameId) {
+    id = randomId()
+  } else {
+    // TODO: Use io-ts decoder and its parse() combinator to transform
+    // to upper case upon decoding
+    gameId = gameId.toUpperCase()
+    const existing = getGameById(gameId, games)
+    if (existing) return Either.left('Game with this id already exists')
+    id = gameId
+  }
+  const game = { id, host, clients: [] }
   return Either.right({ game, games: [...games, game] })
 }
 
@@ -84,28 +95,31 @@ const joinGame = (
   player: WebSocket,
   games: Game[]
 ): Either.Either<string, { game: Game; client: Client; games: Game[] }> => {
-  const game = getGameById(gameId, games)
+  const game = getGameById(gameId.toUpperCase(), games)
   if (!game) return Either.left('No such game')
   if (getGameClient(player, game)) Either.left('Already joining this game')
 
-  // TODO: Generate unique client id
-  const client = { id: 'foo', ws: player }
+  const client = { id: randomId(), ws: player }
   return Either.right({
     game,
     client,
     games: O.set(
       O.optic<Game[]>()
-        .find(g => g.id === gameId)
+        .find(g => g.id === game.id)
         .prop('clients')
         .appendTo()
     )(client)(games),
   })
 }
 
-const CreateGameRequest = t.strict({
-  type: t.literal('createGame'),
-  gameId: t.string,
-})
+const CreateGameRequest = t.intersection([
+  t.strict({
+    type: t.literal('createGame'),
+  }),
+  t.partial({
+    gameId: t.string,
+  }),
+])
 
 const JoinGameRequest = t.strict({
   type: t.literal('joinGame'),
@@ -162,6 +176,7 @@ const sendResponse = (ws: WebSocket, response: Response): void => {
 }
 
 const closeWithError = (ws: WebSocket, reason: string): void => {
+  console.log('Error:', reason)
   sendResponse(ws, responseError(reason))
   ws.close()
 }
@@ -295,9 +310,10 @@ const handleRequest = (ws: WebSocket, request: Request): void => {
     case 'createGame': {
       const next = createGame(request.gameId, ws, games)
       if (Either.isRight(next)) {
-        console.log(`Created game ${request.gameId}`)
+        const { game } = next.right
+        console.log(`Created game ${game.id}`)
         games = next.right.games
-        sendResponse(ws, responseGameCreated(request.gameId))
+        sendResponse(ws, responseGameCreated(game.id))
       } else {
         closeWithError(ws, next.left)
       }
@@ -316,24 +332,32 @@ const handleRequest = (ws: WebSocket, request: Request): void => {
     }
     case 'acceptJoin': {
       const result = getClientById(ws, request.clientId, games)
-      if (!result) return
-      sendResponse(result.client.ws, responseAcceptJoin(request.gameId))
+      if (!result) {
+        console.log('No such client:', request.clientId)
+        return
+      }
+      const { client, game } = result
+      sendResponse(client.ws, responseAcceptJoin(game.id))
       break
     }
     case 'rejectJoin': {
       const result = getClientById(ws, request.clientId, games)
-      if (!result) return
-      sendResponse(
-        result.client.ws,
-        responseRejectJoin(request.gameId, request.reason)
-      )
+      if (!result) {
+        console.log('No such client:', request.clientId)
+        return
+      }
+      const { client, game } = result
+      sendResponse(client.ws, responseRejectJoin(game.id, request.reason))
       break
     }
     case 'webrtcSignaling': {
       if (request.clientId !== undefined) {
         // WebRTC signaling from host -> send to client
         const result = getClientById(ws, request.clientId, games)
-        if (!result) return
+        if (!result) {
+          console.log('No such client:', request.clientId)
+          return
+        }
         const { game, client } = result
         sendResponse(
           client.ws,
@@ -342,9 +366,15 @@ const handleRequest = (ws: WebSocket, request: Request): void => {
       } else {
         // ICE candidate from client -> send to host
         const game = getGameByClient(ws, games)
-        if (!game) return
+        if (!game) {
+          console.log('Game not found')
+          return
+        }
         const client = getGameClient(ws, game)
-        if (!client) return
+        if (!client) {
+          console.log('Client not found')
+          return
+        }
         sendResponse(
           game.host,
           responseWebrtcSignalingForHost(game.id, client.id, request)
