@@ -112,6 +112,19 @@ const JoinGameRequest = t.strict({
   gameId: t.string,
 })
 
+const AcceptJoinRequest = t.strict({
+  type: t.literal('acceptJoin'),
+  gameId: t.string,
+  clientId: t.string,
+})
+
+const RejectJoinRequest = t.strict({
+  type: t.literal('rejectJoin'),
+  gameId: t.string,
+  clientId: t.string,
+  reason: t.string,
+})
+
 const WebrtcSignalingRequest = t.intersection([
   t.strict({
     type: t.literal('webrtcSignaling'),
@@ -128,6 +141,8 @@ type WebrtcSignalingRequest = t.TypeOf<typeof WebrtcSignalingRequest>
 const Request = t.union([
   CreateGameRequest,
   JoinGameRequest,
+  AcceptJoinRequest,
+  RejectJoinRequest,
   WebrtcSignalingRequest,
 ])
 
@@ -186,6 +201,31 @@ const responseNewClient = (
   clientId,
 })
 
+interface ResponseAcceptJoin {
+  type: 'acceptJoin'
+  gameId: string
+}
+
+const responseAcceptJoin = (gameId: string): ResponseAcceptJoin => ({
+  type: 'acceptJoin',
+  gameId,
+})
+
+interface ResponseRejectJoin {
+  type: 'rejectJoin'
+  gameId: string
+  reason: string
+}
+
+const responseRejectJoin = (
+  gameId: string,
+  reason: string
+): ResponseRejectJoin => ({
+  type: 'rejectJoin',
+  gameId,
+  reason,
+})
+
 interface ResponseWebrtcSignalingForClient {
   type: 'webrtcSignaling'
   gameId: string
@@ -242,6 +282,8 @@ type Response =
   | ResponseError
   | ResponseGameCreated
   | ResponseNewClient
+  | ResponseAcceptJoin
+  | ResponseRejectJoin
   | ResponseWebrtcSignalingForClient
   | ResponseRtcSignalingForHost
   | ResponseClientVanished
@@ -266,7 +308,24 @@ const handleRequest = (ws: WebSocket, request: Request): void => {
         games = next.right.games
         const { game, client } = next.right
         sendResponse(game.host, responseNewClient(game.id, client.id))
+      } else {
+        closeWithError(ws, next.left)
       }
+      break
+    }
+    case 'acceptJoin': {
+      const result = getClientById(ws, request.clientId, games)
+      if (!result) return
+      sendResponse(result.client.ws, responseAcceptJoin(request.gameId))
+      break
+    }
+    case 'rejectJoin': {
+      const result = getClientById(ws, request.clientId, games)
+      if (!result) return
+      sendResponse(
+        result.client.ws,
+        responseRejectJoin(request.gameId, request.reason)
+      )
       break
     }
     case 'webrtcSignaling': {
@@ -292,7 +351,6 @@ const handleRequest = (ws: WebSocket, request: Request): void => {
       }
       break
     }
-    // TODO: request to join rejected (game full, game already started, etc.)
   }
 }
 
