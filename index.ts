@@ -295,6 +295,7 @@ const handleRequest = (ws: WebSocket, request: Request): void => {
     case 'createGame': {
       const next = createGame(request.gameId, ws, games)
       if (Either.isRight(next)) {
+        console.log(`Created game ${request.gameId}`)
         games = next.right.games
         sendResponse(ws, responseGameCreated(request.gameId))
       } else {
@@ -358,6 +359,7 @@ const handleConnectionClose = (ws: WebSocket): void => {
   let game = getGameByHost(ws, games)
   if (game) {
     // Host has closed, notify all clients
+    console.log(`Host disconnected, removing game ${game.id}`)
     game.clients.forEach(client => {
       closeWithError(client.ws, 'Host vanished')
     })
@@ -395,8 +397,10 @@ wsServer.on('connection', ws => {
   ws.on('message', data => {
     const request = parseRequest(data)
     if (request === undefined) {
+      console.log('Invalid request:', data)
       sendResponse(ws, responseError('Invalid request'))
     } else {
+      console.log('Processing request:', data)
       handleRequest(ws, request)
     }
   })
