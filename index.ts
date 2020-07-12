@@ -408,6 +408,13 @@ const handleConnectionClose = (ws: WebSocket): void => {
   }
 }
 
+const sendPings = (): void => {
+  games.forEach(game => {
+    game.host.ping()
+    game.clients.forEach(client => client.ws.ping())
+  })
+}
+
 //////////
 
 let port: number = parseInt(process.env.PORT || '', 10)
@@ -422,6 +429,10 @@ const server = app.listen(port, () => {
 })
 
 const wsServer = new WebSocket.Server({ server })
+
+// Keep connections alive by sending pings to all connected sockets
+// every 30 seconds
+setInterval(sendPings, 30000)
 
 wsServer.on('connection', ws => {
   ws.on('message', data => {
