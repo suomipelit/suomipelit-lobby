@@ -4,7 +4,8 @@ import express = require('express')
 import cors = require('cors')
 import WebSocket = require('ws')
 
-import { WebrtcSignaling, IncomingMessage, parseIncomingMessage } from './parse'
+import { IncomingMessage, parseIncomingMessage } from './parse'
+import * as response from './response'
 
 interface Game {
   id: string
@@ -112,135 +113,9 @@ const joinGame = (
   })
 }
 
-interface ResponseError {
-  type: 'error'
-  reason: string
-}
-
-const responseError = (reason: string): ResponseError => ({
-  type: 'error',
-  reason,
-})
-
-interface ResponseGameCreated {
-  type: 'gameCreated'
-  gameId: string
-}
-
-const responseGameCreated = (gameId: string): ResponseGameCreated => ({
-  type: 'gameCreated',
-  gameId,
-})
-
-interface ResponseNewClient {
-  type: 'newClient'
-  gameId: string
-  clientId: string
-}
-
-const responseNewClient = (
-  gameId: string,
-  clientId: string
-): ResponseNewClient => ({
-  type: 'newClient',
-  gameId,
-  clientId,
-})
-
-interface ResponseAcceptJoin {
-  type: 'acceptJoin'
-  gameId: string
-}
-
-const responseAcceptJoin = (gameId: string): ResponseAcceptJoin => ({
-  type: 'acceptJoin',
-  gameId,
-})
-
-interface ResponseRejectJoin {
-  type: 'rejectJoin'
-  gameId: string
-  reason: string
-}
-
-const responseRejectJoin = (
-  gameId: string,
-  reason: string
-): ResponseRejectJoin => ({
-  type: 'rejectJoin',
-  gameId,
-  reason,
-})
-
-interface ResponseWebrtcSignalingForClient {
-  type: 'webrtcSignaling'
-  gameId: string
-  description?: unknown
-  candidate?: unknown
-}
-
-const responseWebrtcSignalingForClient = (
-  gameId: string,
-  message: WebrtcSignaling
-): ResponseWebrtcSignalingForClient => ({
-  type: 'webrtcSignaling',
-  gameId,
-  description: message.description,
-  candidate: message.candidate,
-})
-
-interface ResponseRtcSignalingForHost {
-  type: 'webrtcSignaling'
-  gameId: string
-  clientId: string
-  description?: unknown
-  candidate?: unknown
-}
-
-const responseWebrtcSignalingForHost = (
-  gameId: string,
-  clientId: string,
-  message: WebrtcSignaling
-): ResponseRtcSignalingForHost => ({
-  type: 'webrtcSignaling',
-  gameId,
-  clientId,
-  description: message.description,
-  candidate: message.candidate,
-})
-
-interface ResponseClientVanished {
-  type: 'clientVanished'
-  gameId: string
-  clientId: string
-}
-
-const responseClientVanished = (
-  gameId: string,
-  clientId: string
-): ResponseClientVanished => ({
-  type: 'clientVanished',
-  gameId,
-  clientId,
-})
-
-type Response =
-  | ResponseError
-  | ResponseGameCreated
-  | ResponseNewClient
-  | ResponseAcceptJoin
-  | ResponseRejectJoin
-  | ResponseWebrtcSignalingForClient
-  | ResponseRtcSignalingForHost
-  | ResponseClientVanished
-
-const sendResponse = (ws: WebSocket, response: Response): void => {
-  ws.send(JSON.stringify(response))
-}
-
 const closeWithError = (ws: WebSocket, reason: string): void => {
   console.log('Error:', reason)
-  sendResponse(ws, responseError(reason))
+  response.send(ws, response.error(reason))
   ws.close()
 }
 
@@ -257,7 +132,7 @@ const handleIncomingMessage = (
         const { game } = next.right
         console.log(`Created game ${game.id}`)
         games = next.right.games
-        sendResponse(ws, responseGameCreated(game.id))
+        response.send(ws, response.gameCreated(game.id))
       } else {
         closeWithError(ws, next.left)
       }
@@ -268,7 +143,7 @@ const handleIncomingMessage = (
       if (Either.isRight(next)) {
         games = next.right.games
         const { game, client } = next.right
-        sendResponse(game.host, responseNewClient(game.id, client.id))
+        response.send(game.host, response.newClient(game.id, client.id))
       } else {
         closeWithError(ws, next.left)
       }
@@ -281,7 +156,7 @@ const handleIncomingMessage = (
         return
       }
       const { client, game } = result
-      sendResponse(client.ws, responseAcceptJoin(game.id))
+      response.send(client.ws, response.acceptJoin(game.id))
       break
     }
     case 'rejectJoin': {
@@ -291,7 +166,7 @@ const handleIncomingMessage = (
         return
       }
       const { client, game } = result
-      sendResponse(client.ws, responseRejectJoin(game.id, message.reason))
+      response.send(client.ws, response.rejectJoin(game.id, message.reason))
       break
     }
     case 'webrtcSignaling': {
@@ -303,9 +178,9 @@ const handleIncomingMessage = (
           return
         }
         const { game, client } = result
-        sendResponse(
+        response.send(
           client.ws,
-          responseWebrtcSignalingForClient(game.id, message)
+          response.webrtcSignalingForClient(game.id, message)
         )
       } else {
         // ICE candidate from client -> send to host
@@ -319,9 +194,9 @@ const handleIncomingMessage = (
           console.log('Client not found')
           return
         }
-        sendResponse(
+        response.send(
           game.host,
-          responseWebrtcSignalingForHost(game.id, client.id, message)
+          response.webrtcSignalingForHost(game.id, client.id, message)
         )
       }
       break
@@ -346,7 +221,7 @@ const handleConnectionClose = (ws: WebSocket): void => {
     // Client has closed, notify the host
     const client = getGameClient(ws, game)
     if (!client) return
-    sendResponse(game.host, responseClientVanished(game.id, client.id))
+    response.send(game.host, response.clientVanished(game.id, client.id))
     games = removeClient(game.id, client.id, games)
     return
   }
@@ -383,7 +258,7 @@ wsServer.on('connection', ws => {
     const message = parseIncomingMessage(data)
     if (message === undefined) {
       console.log('Invalid message:', data)
-      sendResponse(ws, responseError('Invalid message'))
+      response.send(ws, response.error('Invalid message'))
     } else {
       console.log('Processing message:', data)
       handleIncomingMessage(ws, message)
