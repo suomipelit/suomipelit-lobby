@@ -1,10 +1,10 @@
 import * as Either from 'fp-ts/lib/Either'
-import { pipe } from 'fp-ts/lib/pipeable'
 import * as O from 'optics-ts'
-import * as t from 'io-ts'
 import express = require('express')
 import cors = require('cors')
 import WebSocket = require('ws')
+
+import { WebrtcSignaling, IncomingMessage, parseIncomingMessage } from './parse'
 
 interface Game {
   id: string
@@ -110,73 +110,6 @@ const joinGame = (
         .appendTo()
     )(client)(games),
   })
-}
-
-const WebrtcSignaling = t.intersection([
-  t.strict({
-    type: t.literal('webrtcSignaling'),
-  }),
-  t.partial({
-    clientId: t.string,
-    description: t.unknown,
-    candidate: t.unknown,
-  }),
-])
-
-type WebrtcSignaling = t.TypeOf<typeof WebrtcSignaling>
-
-const IncomingMessage = t.union([
-  t.intersection([
-    t.strict({
-      type: t.literal('createGame'),
-    }),
-    t.partial({
-      gameId: t.string,
-    }),
-  ]),
-
-  t.strict({
-    type: t.literal('joinGame'),
-    gameId: t.string,
-  }),
-
-  t.strict({
-    type: t.literal('acceptJoin'),
-    gameId: t.string,
-    clientId: t.string,
-  }),
-
-  t.strict({
-    type: t.literal('rejectJoin'),
-    gameId: t.string,
-    clientId: t.string,
-    reason: t.string,
-  }),
-
-  WebrtcSignaling,
-])
-
-type IncomingMessage = t.TypeOf<typeof IncomingMessage>
-
-const parseIncomingMessage = (
-  data: WebSocket.Data
-): IncomingMessage | undefined => {
-  if (typeof data !== 'string') return undefined
-  return pipe(
-    Either.parseJSON(data, Either.toError),
-    Either.chainW(IncomingMessage.decode),
-    Either.getOrElseW(() => undefined)
-  )
-}
-
-const sendResponse = (ws: WebSocket, response: Response): void => {
-  ws.send(JSON.stringify(response))
-}
-
-const closeWithError = (ws: WebSocket, reason: string): void => {
-  console.log('Error:', reason)
-  sendResponse(ws, responseError(reason))
-  ws.close()
 }
 
 interface ResponseError {
@@ -300,6 +233,16 @@ type Response =
   | ResponseWebrtcSignalingForClient
   | ResponseRtcSignalingForHost
   | ResponseClientVanished
+
+const sendResponse = (ws: WebSocket, response: Response): void => {
+  ws.send(JSON.stringify(response))
+}
+
+const closeWithError = (ws: WebSocket, reason: string): void => {
+  console.log('Error:', reason)
+  sendResponse(ws, responseError(reason))
+  ws.close()
+}
 
 let games: Game[] = []
 
