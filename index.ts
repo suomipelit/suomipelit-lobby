@@ -112,34 +112,7 @@ const joinGame = (
   })
 }
 
-const CreateGameRequest = t.intersection([
-  t.strict({
-    type: t.literal('createGame'),
-  }),
-  t.partial({
-    gameId: t.string,
-  }),
-])
-
-const JoinGameRequest = t.strict({
-  type: t.literal('joinGame'),
-  gameId: t.string,
-})
-
-const AcceptJoinRequest = t.strict({
-  type: t.literal('acceptJoin'),
-  gameId: t.string,
-  clientId: t.string,
-})
-
-const RejectJoinRequest = t.strict({
-  type: t.literal('rejectJoin'),
-  gameId: t.string,
-  clientId: t.string,
-  reason: t.string,
-})
-
-const WebrtcSignalingRequest = t.intersection([
+const WebrtcSignaling = t.intersection([
   t.strict({
     type: t.literal('webrtcSignaling'),
   }),
@@ -150,23 +123,48 @@ const WebrtcSignalingRequest = t.intersection([
   }),
 ])
 
-type WebrtcSignalingRequest = t.TypeOf<typeof WebrtcSignalingRequest>
+type WebrtcSignaling = t.TypeOf<typeof WebrtcSignaling>
 
-const Request = t.union([
-  CreateGameRequest,
-  JoinGameRequest,
-  AcceptJoinRequest,
-  RejectJoinRequest,
-  WebrtcSignalingRequest,
+const IncomingMessage = t.union([
+  t.intersection([
+    t.strict({
+      type: t.literal('createGame'),
+    }),
+    t.partial({
+      gameId: t.string,
+    }),
+  ]),
+
+  t.strict({
+    type: t.literal('joinGame'),
+    gameId: t.string,
+  }),
+
+  t.strict({
+    type: t.literal('acceptJoin'),
+    gameId: t.string,
+    clientId: t.string,
+  }),
+
+  t.strict({
+    type: t.literal('rejectJoin'),
+    gameId: t.string,
+    clientId: t.string,
+    reason: t.string,
+  }),
+
+  WebrtcSignaling,
 ])
 
-type Request = t.TypeOf<typeof Request>
+type IncomingMessage = t.TypeOf<typeof IncomingMessage>
 
-const parseRequest = (data: WebSocket.Data): Request | undefined => {
+const parseIncomingMessage = (
+  data: WebSocket.Data
+): IncomingMessage | undefined => {
   if (typeof data !== 'string') return undefined
   return pipe(
     Either.parseJSON(data, Either.toError),
-    Either.chainW(Request.decode),
+    Either.chainW(IncomingMessage.decode),
     Either.getOrElseW(() => undefined)
   )
 }
@@ -250,12 +248,12 @@ interface ResponseWebrtcSignalingForClient {
 
 const responseWebrtcSignalingForClient = (
   gameId: string,
-  request: WebrtcSignalingRequest
+  message: WebrtcSignaling
 ): ResponseWebrtcSignalingForClient => ({
   type: 'webrtcSignaling',
   gameId,
-  description: request.description,
-  candidate: request.candidate,
+  description: message.description,
+  candidate: message.candidate,
 })
 
 interface ResponseRtcSignalingForHost {
@@ -269,13 +267,13 @@ interface ResponseRtcSignalingForHost {
 const responseWebrtcSignalingForHost = (
   gameId: string,
   clientId: string,
-  request: WebrtcSignalingRequest
+  message: WebrtcSignaling
 ): ResponseRtcSignalingForHost => ({
   type: 'webrtcSignaling',
   gameId,
   clientId,
-  description: request.description,
-  candidate: request.candidate,
+  description: message.description,
+  candidate: message.candidate,
 })
 
 interface ResponseClientVanished {
@@ -305,10 +303,13 @@ type Response =
 
 let games: Game[] = []
 
-const handleRequest = (ws: WebSocket, request: Request): void => {
-  switch (request.type) {
+const handleIncomingMessage = (
+  ws: WebSocket,
+  message: IncomingMessage
+): void => {
+  switch (message.type) {
     case 'createGame': {
-      const next = createGame(request.gameId, ws, games)
+      const next = createGame(message.gameId, ws, games)
       if (Either.isRight(next)) {
         const { game } = next.right
         console.log(`Created game ${game.id}`)
@@ -320,7 +321,7 @@ const handleRequest = (ws: WebSocket, request: Request): void => {
       break
     }
     case 'joinGame': {
-      const next = joinGame(request.gameId, ws, games)
+      const next = joinGame(message.gameId, ws, games)
       if (Either.isRight(next)) {
         games = next.right.games
         const { game, client } = next.right
@@ -331,9 +332,9 @@ const handleRequest = (ws: WebSocket, request: Request): void => {
       break
     }
     case 'acceptJoin': {
-      const result = getClientById(ws, request.clientId, games)
+      const result = getClientById(ws, message.clientId, games)
       if (!result) {
-        console.log('No such client:', request.clientId)
+        console.log('No such client:', message.clientId)
         return
       }
       const { client, game } = result
@@ -341,27 +342,27 @@ const handleRequest = (ws: WebSocket, request: Request): void => {
       break
     }
     case 'rejectJoin': {
-      const result = getClientById(ws, request.clientId, games)
+      const result = getClientById(ws, message.clientId, games)
       if (!result) {
-        console.log('No such client:', request.clientId)
+        console.log('No such client:', message.clientId)
         return
       }
       const { client, game } = result
-      sendResponse(client.ws, responseRejectJoin(game.id, request.reason))
+      sendResponse(client.ws, responseRejectJoin(game.id, message.reason))
       break
     }
     case 'webrtcSignaling': {
-      if (request.clientId !== undefined) {
+      if (message.clientId !== undefined) {
         // WebRTC signaling from host -> send to client
-        const result = getClientById(ws, request.clientId, games)
+        const result = getClientById(ws, message.clientId, games)
         if (!result) {
-          console.log('No such client:', request.clientId)
+          console.log('No such client:', message.clientId)
           return
         }
         const { game, client } = result
         sendResponse(
           client.ws,
-          responseWebrtcSignalingForClient(game.id, request)
+          responseWebrtcSignalingForClient(game.id, message)
         )
       } else {
         // ICE candidate from client -> send to host
@@ -377,7 +378,7 @@ const handleRequest = (ws: WebSocket, request: Request): void => {
         }
         sendResponse(
           game.host,
-          responseWebrtcSignalingForHost(game.id, client.id, request)
+          responseWebrtcSignalingForHost(game.id, client.id, message)
         )
       }
       break
@@ -436,13 +437,13 @@ setInterval(sendPings, 30000)
 
 wsServer.on('connection', ws => {
   ws.on('message', data => {
-    const request = parseRequest(data)
-    if (request === undefined) {
-      console.log('Invalid request:', data)
-      sendResponse(ws, responseError('Invalid request'))
+    const message = parseIncomingMessage(data)
+    if (message === undefined) {
+      console.log('Invalid message:', data)
+      sendResponse(ws, responseError('Invalid message'))
     } else {
-      console.log('Processing request:', data)
-      handleRequest(ws, request)
+      console.log('Processing message:', data)
+      handleIncomingMessage(ws, message)
     }
   })
   ws.on('close', () => {
