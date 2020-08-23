@@ -20,11 +20,24 @@ const IncomingMessage = t.union([
   t.intersection([
     t.strict({
       type: t.literal('createGame'),
+      serverName: t.string,
+      maxPlayers: t.number,
     }),
     t.partial({
       gameId: t.string,
     }),
   ]),
+
+  t.strict({
+    type: t.literal('updateGameInfo'),
+    serverName: t.string,
+    playerAmount: t.number,
+    maxPlayers: t.number,
+  }),
+
+  t.strict({
+    type: t.literal('listGames'),
+  }),
 
   t.strict({
     type: t.literal('joinGame'),

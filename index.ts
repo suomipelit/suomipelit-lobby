@@ -11,6 +11,13 @@ interface Game {
   id: string
   host: WebSocket
   clients: Client[]
+  gameInfo: GameInfo
+}
+
+interface GameInfo {
+  serverName: string
+  playerAmount: number
+  maxPlayers: number
 }
 
 interface Client {
@@ -73,6 +80,8 @@ const randomId = () => Math.random().toString(36).substring(2, 6).toUpperCase()
 
 const createGame = (
   gameId: string | undefined,
+  serverName: string,
+  maxPlayers: number,
   host: WebSocket,
   games: Game[]
 ): Either.Either<string, { game: Game; games: Game[] }> => {
@@ -87,9 +96,22 @@ const createGame = (
     if (existing) return Either.left('Game with this id already exists')
     id = gameId
   }
-  const game = { id, host, clients: [] }
+  const game = {
+    id,
+    host,
+    clients: [],
+    gameInfo: { serverName, playerAmount: 1, maxPlayers },
+  }
   return Either.right({ game, games: [...games, game] })
 }
+
+const updateGameInfo = (host: WebSocket, gameInfo: GameInfo): Game[] =>
+  games.map(game => {
+    if (game.host === host) {
+      return { ...game, gameInfo }
+    }
+    return game
+  })
 
 const joinGame = (
   gameId: string,
@@ -127,7 +149,13 @@ const handleIncomingMessage = (
 ): void => {
   switch (message.type) {
     case 'createGame': {
-      const next = createGame(message.gameId, ws, games)
+      const next = createGame(
+        message.gameId,
+        message.serverName,
+        message.maxPlayers,
+        ws,
+        games
+      )
       if (Either.isRight(next)) {
         const { game } = next.right
         console.log(`Created game ${game.id}`)
@@ -136,6 +164,25 @@ const handleIncomingMessage = (
       } else {
         closeWithError(ws, next.left)
       }
+      break
+    }
+    case 'updateGameInfo': {
+      const { type: _, ...gameInfo } = message
+      games = updateGameInfo(ws, gameInfo)
+      break
+    }
+    case 'listGames': {
+      response.send(
+        ws,
+        response.gameList(
+          games.map(game => ({
+            gameId: game.id,
+            serverName: game.gameInfo.serverName,
+            playerAmount: game.gameInfo.playerAmount,
+            maxPlayers: game.gameInfo.maxPlayers,
+          }))
+        )
+      )
       break
     }
     case 'joinGame': {
@@ -201,7 +248,13 @@ const handleIncomingMessage = (
       }
       break
     }
+    default:
+      assertNever(message)
   }
+}
+
+function assertNever(x: never): never {
+  throw new Error('Unexpected value' + x)
 }
 
 const handleConnectionClose = (ws: WebSocket): void => {
