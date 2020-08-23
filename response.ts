@@ -21,6 +21,28 @@ export const gameCreated = (gameId: string): ResponseGameCreated => ({
   gameId,
 })
 
+interface ResponseGameList {
+  type: 'gameList'
+  games: Array<{
+    gameId: string
+    serverName: string
+    playerAmount: number
+    maxPlayers: number
+  }>
+}
+
+export const gameList = (
+  games: Array<{
+    gameId: string
+    serverName: string
+    playerAmount: number
+    maxPlayers: number
+  }>
+): ResponseGameList => ({
+  type: 'gameList',
+  games,
+})
+
 interface ResponseNewClient {
   type: 'newClient'
   gameId: string
@@ -116,6 +138,7 @@ export const clientVanished = (
 type Response =
   | ResponseError
   | ResponseGameCreated
+  | ResponseGameList
   | ResponseNewClient
   | ResponseAcceptJoin
   | ResponseRejectJoin
