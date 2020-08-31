@@ -25,24 +25,35 @@ const IncomingMessage = t.union([
     }),
     t.partial({
       gameId: t.string,
+      requiresPassword: t.boolean,
     }),
   ]),
 
-  t.strict({
-    type: t.literal('updateGameInfo'),
-    serverName: t.string,
-    playerAmount: t.number,
-    maxPlayers: t.number,
-  }),
+  t.intersection([
+    t.strict({
+      type: t.literal('updateGameInfo'),
+      serverName: t.string,
+      playerAmount: t.number,
+      maxPlayers: t.number,
+    }),
+    t.partial({
+      requiresPassword: t.boolean,
+    }),
+  ]),
 
   t.strict({
     type: t.literal('listGames'),
   }),
 
-  t.strict({
-    type: t.literal('joinGame'),
-    gameId: t.string,
-  }),
+  t.intersection([
+    t.strict({
+      type: t.literal('joinGame'),
+      gameId: t.string,
+    }),
+    t.partial({
+      password: t.string,
+    }),
+  ]),
 
   t.strict({
     type: t.literal('acceptJoin'),
