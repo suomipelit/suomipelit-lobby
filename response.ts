@@ -47,15 +47,18 @@ interface ResponseNewClient {
   type: 'newClient'
   gameId: string
   clientId: string
+  password: string | null
 }
 
 export const newClient = (
   gameId: string,
-  clientId: string
+  clientId: string,
+  password: string | null
 ): ResponseNewClient => ({
   type: 'newClient',
   gameId,
   clientId,
+  password,
 })
 
 interface ResponseAcceptJoin {

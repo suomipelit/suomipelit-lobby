@@ -18,6 +18,7 @@ interface GameInfo {
   serverName: string
   playerAmount: number
   maxPlayers: number
+  requiresPassword: boolean
 }
 
 interface Client {
@@ -78,10 +79,15 @@ const removeClient = (
 
 const randomId = () => Math.random().toString(36).substring(2, 6).toUpperCase()
 
+interface GameOptions {
+  serverName: string
+  maxPlayers: number
+  requiresPassword: boolean
+}
+
 const createGame = (
   gameId: string | undefined,
-  serverName: string,
-  maxPlayers: number,
+  gameOptions: GameOptions,
   host: WebSocket,
   games: Game[]
 ): Either.Either<string, { game: Game; games: Game[] }> => {
@@ -100,7 +106,12 @@ const createGame = (
     id,
     host,
     clients: [],
-    gameInfo: { serverName, playerAmount: 1, maxPlayers },
+    gameInfo: {
+      serverName: gameOptions.serverName,
+      playerAmount: 1,
+      maxPlayers: gameOptions.maxPlayers,
+      requiresPassword: gameOptions.requiresPassword,
+    },
   }
   return Either.right({ game, games: [...games, game] })
 }
@@ -151,8 +162,11 @@ const handleIncomingMessage = (
     case 'createGame': {
       const next = createGame(
         message.gameId,
-        message.serverName,
-        message.maxPlayers,
+        {
+          serverName: message.serverName,
+          maxPlayers: message.maxPlayers,
+          requiresPassword: message.requiresPassword ?? false,
+        },
         ws,
         games
       )
@@ -167,8 +181,12 @@ const handleIncomingMessage = (
       break
     }
     case 'updateGameInfo': {
-      const { type: _, ...gameInfo } = message
-      games = updateGameInfo(ws, gameInfo)
+      games = updateGameInfo(ws, {
+        serverName: message.serverName,
+        playerAmount: message.playerAmount,
+        maxPlayers: message.maxPlayers,
+        requiresPassword: message.requiresPassword ?? false,
+      })
       break
     }
     case 'listGames': {
@@ -190,7 +208,10 @@ const handleIncomingMessage = (
       if (Either.isRight(next)) {
         games = next.right.games
         const { game, client } = next.right
-        response.send(game.host, response.newClient(game.id, client.id))
+        response.send(
+          game.host,
+          response.newClient(game.id, client.id, message.password ?? null)
+        )
       } else {
         closeWithError(ws, next.left)
       }
