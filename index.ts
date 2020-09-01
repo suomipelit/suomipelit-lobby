@@ -198,6 +198,7 @@ const handleIncomingMessage = (
             serverName: game.gameInfo.serverName,
             playerAmount: game.gameInfo.playerAmount,
             maxPlayers: game.gameInfo.maxPlayers,
+            requiresPassword: game.gameInfo.requiresPassword,
           }))
         )
       )

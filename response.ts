@@ -37,6 +37,7 @@ export const gameList = (
     serverName: string
     playerAmount: number
     maxPlayers: number
+    requiresPassword: boolean
   }>
 ): ResponseGameList => ({
   type: 'gameList',
