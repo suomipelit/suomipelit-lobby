@@ -235,6 +235,7 @@ const handleIncomingMessage = (
       }
       const { client, game } = result
       response.send(client.ws, response.rejectJoin(game.id, message.reason))
+      games = removeClient(game.id, message.clientId, games)
       break
     }
     case 'webrtcSignaling': {
