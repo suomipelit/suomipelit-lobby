@@ -79,7 +79,7 @@ export const parseIncomingMessage = (
   if (typeof data !== 'string') return undefined
   return pipe(
     Either.parseJSON(data, Either.toError),
-    Either.chainW(IncomingMessage.decode),
+    Either.chainW((v) => IncomingMessage.decode(v)),
     Either.getOrElseW(() => undefined)
   )
 }

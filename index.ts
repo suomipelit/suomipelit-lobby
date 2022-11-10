@@ -27,33 +27,33 @@ interface Client {
 }
 
 const getGameById = (id: string, games: Game[]): Game | undefined =>
-  games.find(game => game.id === id)
+  games.find((game) => game.id === id)
 
 const getGameByHost = (host: WebSocket, games: Game[]): Game | undefined =>
-  games.find(game => game.host === host)
+  games.find((game) => game.host === host)
 
 const getGameByClient = (ws: WebSocket, games: Game[]): Game | undefined =>
-  games.find(game => game.clients.some(client => client.ws === ws))
+  games.find((game) => game.clients.some((client) => client.ws === ws))
 
 const getGameClient = (ws: WebSocket, game: Game): Client | undefined =>
-  game.clients.find(client => client.ws === ws)
+  game.clients.find((client) => client.ws === ws)
 
 const getClientById = (
   host: WebSocket,
   clientId: string,
   games: Game[]
 ): { game: Game; client: Client } | undefined => {
-  const game = games.find(game => game.host === host)
+  const game = games.find((game) => game.host === host)
   if (!game) return undefined
 
-  const client = game.clients.find(client => client.id === clientId)
+  const client = game.clients.find((client) => client.id === clientId)
   if (!client) return undefined
 
   return { game, client }
 }
 
 const removeGame = (gameId: string, games: Game[]): Game[] =>
-  games.filter(game => game.id !== gameId)
+  games.filter((game) => game.id !== gameId)
 
 const removeClient = (
   gameId: string,
@@ -68,12 +68,12 @@ const removeClient = (
   //     .prop('clients')
   //     .find(client => client.id === clientId)
   // )(games)
-  games.map(game =>
+  games.map((game) =>
     game.id !== gameId
       ? game
       : {
           ...game,
-          clients: game.clients.filter(client => client.id !== clientId),
+          clients: game.clients.filter((client) => client.id !== clientId),
         }
   )
 
@@ -117,7 +117,7 @@ const createGame = (
 }
 
 const updateGameInfo = (host: WebSocket, gameInfo: GameInfo): Game[] =>
-  games.map(game => {
+  games.map((game) => {
     if (game.host === host) {
       return { ...game, gameInfo }
     }
@@ -139,7 +139,7 @@ const joinGame = (
     client,
     games: O.set(
       O.optic<Game[]>()
-        .find(g => g.id === game.id)
+        .find((g) => g.id === game.id)
         .prop('clients')
         .appendTo()
     )(client)(games),
@@ -193,7 +193,7 @@ const handleIncomingMessage = (
       response.send(
         ws,
         response.gameList(
-          games.map(game => ({
+          games.map((game) => ({
             gameId: game.id,
             serverName: game.gameInfo.serverName,
             playerAmount: game.gameInfo.playerAmount,
@@ -277,7 +277,8 @@ const handleIncomingMessage = (
 }
 
 function assertNever(x: never): never {
-  throw new Error('Unexpected value' + x)
+  void x
+  throw new Error('Unexpected value')
 }
 
 const handleConnectionClose = (ws: WebSocket): void => {
@@ -285,7 +286,7 @@ const handleConnectionClose = (ws: WebSocket): void => {
   if (game) {
     // Host has closed, notify all clients
     console.log(`Host disconnected, removing game ${game.id}`)
-    game.clients.forEach(client => {
+    game.clients.forEach((client) => {
       closeWithError(client.ws, 'Host vanished')
     })
     games = removeGame(game.id, games)
@@ -304,9 +305,9 @@ const handleConnectionClose = (ws: WebSocket): void => {
 }
 
 const sendPings = (): void => {
-  games.forEach(game => {
+  games.forEach((game) => {
     game.host.ping()
-    game.clients.forEach(client => client.ws.ping())
+    game.clients.forEach((client) => client.ws.ping())
   })
 }
 
@@ -329,8 +330,8 @@ const wsServer = new WebSocket.Server({ server })
 // every 30 seconds
 setInterval(sendPings, 30000)
 
-wsServer.on('connection', ws => {
-  ws.on('message', data => {
+wsServer.on('connection', (ws) => {
+  ws.on('message', (data) => {
     const message = parseIncomingMessage(data)
     if (message === undefined) {
       console.log('Invalid message:', data)
