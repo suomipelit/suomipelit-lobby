@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:19-alpine
 
 COPY . .
 RUN npm install && npm run build
