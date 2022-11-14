@@ -25,7 +25,7 @@
     "express": "^4.17.1",
     "fp-ts": "^2.13.1",
     "io-ts": "^2.2.7",
-    "optics-ts": "^1.1.0",
+    "optics-ts": "^2.4.0",
     "ws": "^7.5.8"
   },
   "devDependencies": {
