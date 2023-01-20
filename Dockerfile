@@ -1,7 +1,10 @@
-FROM node:18-alpine
-
+FROM rust AS builder
+WORKDIR /app
 COPY . .
-RUN npm install && npm run build
+RUN cargo build --release
 
-ENV PORT=8080
-CMD ["npm", "start"]
+FROM debian:buster-slim
+COPY --from=builder /app/target/release/suomipelit-lobby /usr/local/bin/suomipelit-lobby
+
+EXPOSE 8080
+CMD ["suomipelit-lobby"]
