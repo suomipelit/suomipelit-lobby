@@ -6,12 +6,19 @@ use rand::distributions::{Alphanumeric, DistString};
 use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::{Arc, Mutex};
 use tokio::select;
 use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() {
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080);
+    let bind = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, port));
+
     let app = Router::new()
         .route(
             "/",
@@ -22,7 +29,9 @@ async fn main() {
             ),
         )
         .with_state(AppState::new());
-    axum::Server::bind(&"0.0.0.0:8080".parse().unwrap())
+
+    println!("Starting server on {}", bind);
+    axum::Server::bind(&bind)
         .serve(app.into_make_service())
         .await
         .unwrap();

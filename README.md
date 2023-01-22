@@ -8,4 +8,4 @@ WebRTC signaling service for suomipelit games.
 cargo run
 ```
 
-Runs on port 8080.
+Runs on port 8080 by default, set the `PORT` environment variable to override.
