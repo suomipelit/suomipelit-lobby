@@ -10,6 +10,55 @@ use std::sync::{Arc, Mutex};
 use tokio::select;
 use tokio::sync::mpsc;
 
+#[tokio::main]
+async fn main() {
+    let app = Router::new()
+        .route(
+            "/",
+            get(
+                |ws: WebSocketUpgrade, State(state): State<AppState>| async {
+                    ws.on_upgrade(|socket| handle_websocket(socket, state))
+                },
+            ),
+        )
+        .with_state(AppState::new());
+    axum::Server::bind(&"0.0.0.0:8080".parse().unwrap())
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
+}
+
+#[derive(Clone)]
+struct AppState {
+    games: Arc<Mutex<Games>>,
+    sockets: Arc<Mutex<Sockets>>,
+}
+
+impl AppState {
+    fn new() -> Self {
+        Self {
+            games: Arc::new(Mutex::new(Games::new())),
+            sockets: Arc::new(Mutex::new(Sockets::new())),
+        }
+    }
+
+    fn lock_games<T, F>(&self, f: F) -> T
+    where
+        F: FnOnce(&mut Games) -> T,
+    {
+        let mut guard = self.games.lock().unwrap();
+        f(&mut guard)
+    }
+
+    fn lock_sockets<T, F>(&self, f: F) -> T
+    where
+        F: FnOnce(&mut Sockets) -> T,
+    {
+        let mut guard = self.sockets.lock().unwrap();
+        f(&mut guard)
+    }
+}
+
 struct GameInfo {
     server_name: String,
     player_amount: u32,
@@ -22,6 +71,11 @@ struct Game {
     host: SocketId,
     clients: HashSet<SocketId>,
     game_info: GameInfo,
+}
+
+enum JoinGameError {
+    GameNotFound,
+    AlreadyJoined,
 }
 
 struct Games(Vec<Game>);
@@ -119,61 +173,6 @@ impl Sockets {
     fn unregister(&mut self, socket_id: &SocketId) {
         self.0.remove(socket_id);
     }
-}
-
-#[derive(Clone)]
-struct AppState {
-    games: Arc<Mutex<Games>>,
-    sockets: Arc<Mutex<Sockets>>,
-}
-
-impl AppState {
-    fn new() -> Self {
-        Self {
-            games: Arc::new(Mutex::new(Games::new())),
-            sockets: Arc::new(Mutex::new(Sockets::new())),
-        }
-    }
-
-    fn lock_games<T, F>(&self, f: F) -> T
-    where
-        F: FnOnce(&mut Games) -> T,
-    {
-        let mut guard = self.games.lock().unwrap();
-        f(&mut guard)
-    }
-
-    fn lock_sockets<T, F>(&self, f: F) -> T
-    where
-        F: FnOnce(&mut Sockets) -> T,
-    {
-        let mut guard = self.sockets.lock().unwrap();
-        f(&mut guard)
-    }
-}
-
-#[derive(Debug)]
-enum JoinGameError {
-    GameNotFound,
-    AlreadyJoined,
-}
-
-#[tokio::main]
-async fn main() {
-    let app = Router::new()
-        .route(
-            "/",
-            get(
-                |ws: WebSocketUpgrade, State(state): State<AppState>| async {
-                    ws.on_upgrade(|socket| handle_websocket(socket, state))
-                },
-            ),
-        )
-        .with_state(AppState::new());
-    axum::Server::bind(&"0.0.0.0:8080".parse().unwrap())
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
 }
 
 async fn handle_websocket(socket: WebSocket, app_state: AppState) {
@@ -392,8 +391,10 @@ fn process_incoming_message(
         IncomingMessage::JoinGame { game_id, password } => {
             match games.join_game(&game_id, socket_id) {
                 Err(err) => MessagesToSend::self_(OutgoingMessage::Error {
-                    // TODO: format for JoinGameError
-                    reason: format!("{:?}", err),
+                    reason: match err {
+                        JoinGameError::GameNotFound => "Game not found".to_string(),
+                        JoinGameError::AlreadyJoined => "Already joined".to_string(),
+                    },
                 }),
                 Ok(host) => MessagesToSend::other(
                     host,
